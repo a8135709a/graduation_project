@@ -8,11 +8,10 @@ import pymongo
 
 headers = {
     'Connection': 'keep-alive',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)\
-     Chrome/57.0.2987.133 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.96 \
+    Safari/537.36',
     'Host': 'dl.lianjia.com',
-    'Cookie': 'lianjia_uuid=12a6f7e5-8bf0-4aaf-afd9-321ec1b67061; select_city=210200; all-lj=492291e11daf53bf3\
-    4d39f84cc442d11; _smt_uid=58ec6b47.55a6c7fd; lianjia_ssid=7cf3380e-df57-4336-8919-105a796f5951'
+    'Cookie': 'select_city=210200; all-lj=492291e11daf53bf34d39f84cc442d11; lianjia_uuid=f7b8efc9-5416-46d7-8ef0-cb37dcfd35db; _smt_uid=590ec972.43eeb903; lianjia_ssid=3b2c3594-105f-450e-8bfa-dbaf1e11aab2'
 }
 
 client = pymongo.MongoClient('localhost', 27017, connect=False)
@@ -34,7 +33,6 @@ def get_url():
     for i in area_link:
         area_links.append('https://dl.lianjia.com{}'.format(i.get('href')))
     print(area_links)
-    print('\n完成，请执行第二步\n')
 
 all_area_links = []
 
@@ -68,7 +66,7 @@ def get_all_url():
             }
             area_list.insert_one(data)
             print(data)
-    print('\n完成，请执行第三步\n')
+    print('\n完成，请执行第二步\n')
 
 
 def get_all_page_url():
@@ -87,14 +85,13 @@ def get_all_page_url():
                 }
                 all_page_url.insert_one(data)
                 print(data)
-    print('\n完成，请执行第四步\n')
+    print('\n完成，请执行第三步\n')
 
 page_db_url = [url['url'] for url in all_page_url.find()]
 page_index_url = [url['father_url'] for url in all_house_url.find()]
 x = set(page_db_url)
 y = set(page_index_url)
 page_rest_url = x-y
-
 
 def get_all_house_url():
     for i in page_rest_url:
@@ -119,7 +116,7 @@ def get_all_house_url():
                 }
                 print(data)
                 all_house_url.insert_one(data)
-    print('\n完成，请执行第五步\n')
+    print('\n完成，请执行第四步\n')
 
 house_db_url = [url['url'] for url in all_house_url.find()]
 house_index_url = [url['url'] for url in all_house_info.find()]
@@ -149,32 +146,31 @@ def get_house_info():
                 'see': soup.select('.msg > span > label')[3].text,  # 带看（次）
                 'follow': soup.select('.msg > span > label')[4].text,  # 关注（人）
                 'browse': soup.select('.msg > span > label')[5].text,  # 浏览（次）
+                'dealDate': [i['dealDate'] for i in all_house_url.find({'url':i})][0],
                 'saleDate': re.sub(' ', '', re.sub('挂牌时间', '', soup.select('.transaction > div > ul > li')[2].text)),  # 挂牌时间
                 'pattern': re.sub(' ', '', re.sub('房屋户型', '', soup.select('.base > .content > ul > li')[0].text)),  # 房屋户型
-                'spaceSize': re.sub(' ', '', re.sub('建筑面积', '', soup.select('.base > .content > ul > li')[2].text))   # 建筑面积
+                'spaceSize': re.sub('㎡', '', re.sub(' ', '', re.sub('建筑面积', '', soup.select('.base > .content > ul > li')[2].text)))   # 建筑面积
             }
             print(data)
             all_house_info.insert_one(data)
     print('\n所有数据爬取成功！\n')
+# get_house_info()
 
 
 def main():
     print('请按步骤执行并注意屏幕输出的提示：\
-    \n1.first step\n2.second step\n3.third step\n4.fourth step\n5.fifth step\n0.exit')
-    a = input('输入你的选择(1、2、3、4、5、0)：')
+    \n1.first step\n2.second step\n3.third step\n4.fourth step\n0.exit')
+    a = input('输入你的选择(1、2、3、4、0)：')
     if a == '1':
-        get_url()
-        main()
-    elif a == '2':
         get_all_url()
         main()
-    elif a == '3':
+    elif a == '2':
         get_all_page_url()
         main()
-    elif a == '4':
+    elif a == '3':
         get_all_house_url()
         main()
-    elif a == '5':
+    elif a == '4':
         get_house_info()
     elif a == '0':
         exit()
@@ -188,3 +184,4 @@ if __name__ == '__main__':
     pool.apply_async(main())
     pool.close()
     pool.join()
+# get_house_info()
