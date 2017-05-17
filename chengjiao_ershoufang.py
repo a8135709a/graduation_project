@@ -5,13 +5,14 @@ from bs4 import BeautifulSoup
 import requests
 import pymongo
 
-
 headers = {
     'Connection': 'keep-alive',
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.96 \
     Safari/537.36',
     'Host': 'dl.lianjia.com',
-    'Cookie': 'select_city=210200; all-lj=492291e11daf53bf34d39f84cc442d11; lianjia_uuid=f7b8efc9-5416-46d7-8ef0-cb37dcfd35db; _smt_uid=590ec972.43eeb903; lianjia_ssid=3b2c3594-105f-450e-8bfa-dbaf1e11aab2'
+    'Cookie': 'lianjia_uuid=12a6f7e5-8bf0-4aaf-afd9-321ec1b67061; sample_traffic_test=test_66; \
+    select_city=210200; all-lj=492291e11daf53bf34d39f84cc442d11; _smt_uid=58ec6b47.55a6c7fd;\
+     lianjia_ssid=c80ec206-c949-4659-981d-0b776def05db'
 }
 
 client = pymongo.MongoClient('localhost', 27017, connect=False)
@@ -33,6 +34,7 @@ def get_url():
     for i in area_link:
         area_links.append('https://dl.lianjia.com{}'.format(i.get('href')))
     print(area_links)
+
 
 all_area_links = []
 
@@ -73,25 +75,31 @@ def get_all_page_url():
     for i in area_list.find():
         wb_data = requests.get(i['url'], headers=headers)
         soup = BeautifulSoup(wb_data.text, 'lxml')
-        page = soup.find_all('div', 'page-box house-lst-page-box')
-        for num in page:
-            d = re.sub('\D', '', re.search(r':.*?,', num.get('page-data'), re.DOTALL).group())
-            for a in range(1, int(d)+1):
-                url = 'http://dl.lianjia.com{}pg{}/'.format(i['where'], a)
-                data = {
-                    'url': url,
-                    'father_url': i['url'],
-                    'area': i['area']
-                }
-                all_page_url.insert_one(data)
-                print(data)
+        if soup.select('title')[0].text == '414 Request-URI Too Large':
+            print('请打开网页输入验证码，程序将在15秒后继续执行', i)
+            time.sleep(15)
+        else:
+            page = soup.find_all('div', 'page-box house-lst-page-box')
+            for num in page:
+                d = re.sub('\D', '', re.search(r':.*?,', num.get('page-data'), re.DOTALL).group())
+                for a in range(1, int(d) + 1):
+                    url = 'http://dl.lianjia.com{}pg{}/'.format(i['where'], a)
+                    data = {
+                        'url': url,
+                        'father_url': i['url'],
+                        'area': i['area']
+                    }
+                    all_page_url.insert_one(data)
+                    print(data)
     print('\n完成，请执行第三步\n')
+
 
 page_db_url = [url['url'] for url in all_page_url.find()]
 page_index_url = [url['father_url'] for url in all_house_url.find()]
 x = set(page_db_url)
 y = set(page_index_url)
-page_rest_url = x-y
+page_rest_url = x - y
+
 
 def get_all_house_url():
     for i in page_rest_url:
@@ -111,18 +119,19 @@ def get_all_house_url():
                     'url': l.get('href'),
                     'father_url': i,
                     'area': [area['area'] for area in all_page_url.find({'url': i})][0],
-                    'dealDate': d.get_text(),   # 成交日期
+                    'dealDate': d.get_text(),  # 成交日期
                     'title': t.get_text()
                 }
                 print(data)
                 all_house_url.insert_one(data)
     print('\n完成，请执行第四步\n')
 
+
 house_db_url = [url['url'] for url in all_house_url.find()]
 house_index_url = [url['url'] for url in all_house_info.find()]
 x = set(house_db_url)
 y = set(house_index_url)
-house_rest_url = x-y
+house_rest_url = x - y
 
 
 def get_house_info():
@@ -136,24 +145,55 @@ def get_house_info():
         elif soup.find('div', attrs={'class': 'icon-404 icon fl'}):
             print(i, '页面不存在')
         else:
+            if soup.find(text='房源标签'):
+                tages = list(
+                    map(lambda x: x.text, soup.select('.introContent.showbasemore > .tags.clear > .content > a')))
+            else:
+                tages = None
+            if soup.find(text='核心卖点'):
+                sealPoint = re.sub('\\n', '', re.sub(' ', '', soup.select(
+                    '.introContent.showbasemore > .baseattribute.clear > .content')[0].text))
+            else:
+                sealPoint = None
+            if soup.find(text='户型介绍'):
+                apartmentIntroduction = re.sub('\\n', '', re.sub(' ', '', soup.select(
+                    '.introContent.showbasemore > .baseattribute.clear > .content')[1].text))
+            else:
+                apartmentIntroduction = None
+            if soup.find(text='装修描述'):
+                decorationDescription = re.sub('\\n', '', re.sub(' ', '', soup.select(
+                    '.introContent.showbasemore > .baseattribute.clear > .content')[2].text))
+            else:
+                decorationDescription = None
             data = {
                 'url': i,  # 链接
                 'title': [title['title'] for title in all_house_url.find({'url': i})][0],  # 标题
                 'area': [area['area'] for area in all_house_url.find({'url': i})][0],  # 区域
-                'price': soup.select('.dealTotalPrice > i')[0].text,  # 价格
-                'unitPrice': soup.select('.info.fr > .price > b')[0].text,  # 平米价
+                'price': float(soup.select('.dealTotalPrice > i')[0].text),  # 价格
+                'unitPrice': float(soup.select('.info.fr > .price > b')[0].text),  # 平米价
                 'dealCycle': soup.select('.msg > span > label')[1].text,  # 成交周期
                 'see': soup.select('.msg > span > label')[3].text,  # 带看（次）
                 'follow': soup.select('.msg > span > label')[4].text,  # 关注（人）
                 'browse': soup.select('.msg > span > label')[5].text,  # 浏览（次）
-                'dealDate': [i['dealDate'] for i in all_house_url.find({'url':i})][0],
-                'saleDate': re.sub(' ', '', re.sub('挂牌时间', '', soup.select('.transaction > div > ul > li')[2].text)),  # 挂牌时间
-                'pattern': re.sub(' ', '', re.sub('房屋户型', '', soup.select('.base > .content > ul > li')[0].text)),  # 房屋户型
-                'spaceSize': re.sub('㎡', '', re.sub(' ', '', re.sub('建筑面积', '', soup.select('.base > .content > ul > li')[2].text)))   # 建筑面积
+                'dealDate': [i['dealDate'] for i in all_house_url.find({'url': i})][0],
+                'saleDate': re.sub(' ', '', re.sub('挂牌时间', '', soup.select('.transaction > div > ul > li')[2].text)),
+            # 挂牌时间
+                'pattern': re.sub(' ', '', re.sub('房屋户型', '', soup.select('.base > .content > ul > li')[0].text)),
+            # 房屋户型
+                'spaceSize': float(re.sub('㎡', '', re.sub(' ', '', re.sub('建筑面积', '',
+                                                                          soup.select('.base > .content > ul > li')[
+                                                                              2].text)))),  # 建筑面积
+                'tags': tages,  # 特点标签
+                'sealPoint': sealPoint,  # 核心卖点
+                'apartmentIntroduction': apartmentIntroduction,  # 户型介绍
+                'decorationDescription': decorationDescription,  # 装修描述
+
             }
             print(data)
             all_house_info.insert_one(data)
     print('\n所有数据爬取成功！\n')
+
+
 # get_house_info()
 
 
@@ -184,4 +224,4 @@ if __name__ == '__main__':
     pool.apply_async(main())
     pool.close()
     pool.join()
-# get_house_info()
+    # get_house_info()
